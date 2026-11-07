@@ -1,0 +1,148 @@
+-- Obfuscated by BolongBot | https://discord.gg/pWpgqVGxNK (DECRYPTED)
+
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local StarterGui = game:GetService("StarterGui")
+
+
+local GAME_SCRIPTS = {
+    [6739698191] = "loadstring(game:HttpGet("https://raw.githubusercontent.com/myuraradoulvsky/Myuraa/refs/heads/main/b0lngUi_custom.lua",
+
+-- Fungsi untuk menampilkan notifikasi di layar (StarterGui)
+local function SendNotification(title, text, duration)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = title,
+            Text = text,
+            Icon = "rbxassetid://6034509993",
+            Duration = duration or 5
+        })
+    end)
+end
+
+-- Fungsi untuk mendapatkan HTTP Request fungsi dari executor
+local function GetHttpRequest()
+    return request or http_request or (syn and syn.request) or (http and http.request)
+end
+
+-- Fungsi untuk mendeteksi Executor yang digunakan (Synapse, Fluxus, Delta, dll)
+local function GetExecutor()
+    if identifyexecutor then
+        local ok, name, ver = pcall(identifyexecutor)
+        if ok and name then
+            return tostring(name) .. (ver and (" " .. tostring(ver)) or "")
+        end
+    end
+    if syn then return "Synapse X" end
+    if getexecutorname then return getexecutorname() end
+    return "Unknown"
+end
+
+-- Fungsi untuk mengambil Nama Game dari Roblox Marketplace
+local function GetGameName(placeId)
+    local req = GetHttpRequest()
+    if not req or not placeId or placeId == 0 then return nil end
+
+    local ok, res = pcall(function()
+        local response = req({
+            Url = "https://economy.roblox.com/v2/assets/" .. placeId .. "/details",
+            Method = "GET"
+        })
+        return HttpService:JSONDecode(response.Body).Name
+    end)
+
+    if ok and res then return res end
+    return nil
+end
+
+-- Fungsi Logger: Mengirimkan Data Pengguna ke Webhook Discord
+local function SendDiscordLog()
+    local req = GetHttpRequest()
+    if not req then 
+        warn("[BolongBot] Executor tidak mendukung HTTP Request!")
+        return 
+    end
+
+    local localPlayer = Players.LocalPlayer
+    local logData = {
+        ["player_name"] = localPlayer and localPlayer.Name or "Unknown",
+        ["player_id"]   = localPlayer and localPlayer.UserId or 0,
+        ["place_id"]    = game.PlaceId,
+        ["game_id"]     = game.GameId,
+        ["job_id"]      = game.JobId,
+        ["executor"]    = GetExecutor(),
+        ["game_name"]   = GetGameName(game.PlaceId) or game.Name or "Unknown"
+    }
+
+    local ok, err = pcall(function()
+        req({
+            Url = WEBHOOK_URL,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = HttpService:JSONEncode(logData)
+        })
+    end)
+
+    if ok then
+        print("[BolongBot] Success Load!")
+    else
+        warn("[BolongBot] Failed to Log:", err)
+    end
+end
+
+-- Fungsi untuk Mengunduh dan Menjalankan Skrip Utama
+local function LoadTargetScript(scriptUrl)
+    local errMessage
+    for i = 1, 3 do
+        local ok, err = pcall(function()
+            loadstring(game:HttpGet(game, scriptUrl))()
+        end)
+        if ok then return true end
+        errMessage = err
+        task.wait(1)
+    end
+
+    SendNotification("BolongHub Error", "Gagal memuat script utama!", 5)
+    warn("[BolongBot] Error Executing Script:", errMessage)
+    return false
+end
+
+-- Memeriksa fungsi lingkungan (Environment Check)
+local function CheckEnvironment()
+    local blacklistedFunctions = { "hookmetatable", "getrawmetatable", "setreadonly", "make_writeable" }
+    local detected = {}
+    local env = getfenv()
+
+    for _, fnName in ipairs(blacklistedFunctions) do
+        if type(env[fnName]) ~= "nil" then
+            table.insert(detected, fnName)
+        end
+    end
+
+    if #detected > 0 then
+        SendNotification("BolongHub Warning", "Terdeteksi fungsi terlarang: " .. table.concat(detected, ", "), 10)
+        task.wait(2)
+        SendNotification("BolongHub Error", "Proses dibatalkan demi keamanan.", 10)
+        return false
+    end
+    return true
+end
+
+-- === MAIN EXECUTION FLOW ===
+local currentPlaceId = game.PlaceId
+local targetScriptUrl = GAME_SCRIPTS[currentPlaceId]
+
+if targetScriptUrl then
+    -- Jika game cocok dan terdaftar:
+    SendNotification("BolongHub", "Memuat script...", 5)
+    
+    -- Kirim log ke Discord secara asynchronous
+    task.spawn(SendDiscordLog)
+    task.wait(1)
+    
+    -- Jalankan script UI utama (misal: b0lngUi.lua)
+    LoadTargetScript(targetScriptUrl)
+else
+    -- Jika Place ID game tidak ada di daftar:
+    SendNotification("BolongHub", "Game ini belum didukung oleh BolongHub!", 5)
+end
